@@ -55,8 +55,10 @@ describe Flapjack::Gateways::Jabber, :logger => true do
       expect(bot).to receive(:announce).with('johns@example.com', /Problem: /)
       expect(bot).to receive(:alias).and_return('flapjack')
 
+      entity = double(Flapjack::Data::Entity)
       check = double(Flapjack::Data::Check)
-      expect(check).to receive(:entity_name).twice.and_return('app-02')
+      expect(entity).to receive(:name).twice.and_return('app-02')
+      expect(check).to receive(:entity).twice.and_return(entity)
       expect(check).to receive(:name).twice.and_return('ping')
 
       expect(alert).to receive(:address).and_return('johns@example.com')
@@ -183,8 +185,10 @@ describe Flapjack::Gateways::Jabber, :logger => true do
       expect(check).to receive(:unscheduled_maintenance_at).and_return(nil)
 
       all_checks = double('all_checks', :all => [check])
-      expect(Flapjack::Data::Check).to receive(:intersect).
-        with(:entity_name => 'example.com', :name => 'ping').and_return(all_checks)
+      entity_checks = double('entity_checks')
+      expect(entity).to receive(:checks).and_return(entity_checks)
+      expect(entity_checks).to receive(:intersect).
+        with(:name => 'ping').and_return(all_checks)
 
       all_entities = double('all_entities', :all => [entity])
       expect(Flapjack::Data::Entity).to receive(:intersect).
@@ -222,7 +226,8 @@ describe Flapjack::Gateways::Jabber, :logger => true do
     it "interprets a received check acknowledgement command" do
       expect(bot).to receive(:announce).with('room1', 'ACKing ping on example.com (abcd1234)')
 
-      expect(check).to receive(:entity_name).and_return('example.com')
+      expect(entity).to receive(:name).and_return('example.com')
+      expect(check).to receive(:entity).and_return(entity)
       expect(check).to receive(:name).and_return('ping')
       expect(check).to receive(:in_unscheduled_maintenance?).and_return(false)
 

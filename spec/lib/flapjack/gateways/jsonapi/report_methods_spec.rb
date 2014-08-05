@@ -119,7 +119,7 @@ describe 'Flapjack::Gateways::JSONAPI::ReportMethods', :sinatra => true, :logger
     it "doesn't return a #{report_type} report for an entity that's not found" do
       expect(Flapjack::Data::Entity).to receive(:find_by_ids!).
         with([entity.id]).
-        and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::Entity, [entity.id]))
+        and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::Entity, [entity.id]))
 
       get "/#{report_type}_report/entities/#{entity.id}"
       expect(last_response.status).to eq(404)
@@ -136,7 +136,7 @@ describe 'Flapjack::Gateways::JSONAPI::ReportMethods', :sinatra => true, :logger
     it "doesn't return a #{report_type} report for a check that's not found" do
       expect(Flapjack::Data::Check).to receive(:find_by_ids!).
         with([check.id]).
-        and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::Check, [check.id]))
+        and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::Check, [check.id]))
 
       get "/#{report_type}_report/checks/#{check.id}"
       expect(last_response).to be_not_found

@@ -2,9 +2,10 @@
 
 require 'digest'
 
-require 'sandstorm/record'
+require 'sandstorm/records/redis_record'
 
 require 'flapjack/data/check_state'
+require 'flapjack/data/check_state_history'
 require 'flapjack/data/contact'
 require 'flapjack/data/scheduled_maintenance'
 require 'flapjack/data/unscheduled_maintenance'
@@ -15,30 +16,32 @@ module Flapjack
 
     class Check
 
-      include Sandstorm::Record
+      include Sandstorm::Records::RedisRecord
 
-      # NB: state could be retrieved from states.last instead -- summary, details
-      # and last_update can change without a new check_state being added though
+      # TODO include in Sandstorm::Records::Base
+      include ActiveModel::Validations::Callbacks
 
-      define_attributes :name               => :string,
-                        :entity_name        => :string,
-                        :state              => :string,
-                        :summary            => :string,
-                        :perfdata_json      => :string,
-                        :details            => :string,
-                        :last_update        => :timestamp,
-                        :last_problem_alert => :timestamp,
-                        :enabled            => :boolean,
-                        :ack_hash           => :string
+      define_attributes :name                  => :string,
+                        :state                 => :string,
+                        :previous_state        => :string,
+                        :perfdata_json         => :string,
+                        :last_update           => :timestamp,
+                        :last_problem_alert    => :timestamp,
+                        :last_notification     => :timestamp,
+                        :max_notified_severity => :string,
+                        :enabled               => :boolean,
+                        :ack_hash              => :string
 
-      index_by :entity_name, :name, :enabled, :state
+      index_by :name, :enabled, :state
       unique_index_by :ack_hash
 
-      belongs_to :entity, :class_name => 'Flapjack::Data::Entity'
+      belongs_to :entity, :class_name => 'Flapjack::Data::Entity', :inverse_of => :checks
 
       has_many :contacts, :class_name => 'Flapjack::Data::Contact'
 
-      has_sorted_set :states, :class_name => 'Flapjack::Data::CheckState', :key => :timestamp
+      has_one :current_state, :class_name => 'Flapjack::Data::CheckState'
+      has_one :state_history, :class_name => 'Flapjack::Data::CheckStateHistory'
+
       has_sorted_set :actions, :class_name => 'Flapjack::Data::Action', :key => :timestamp
 
       # keep two indices for each, so that we can query on their intersection
@@ -64,20 +67,14 @@ module Flapjack
       has_many :alerts, :class_name => 'Flapjack::Data::Alert'
       has_many :rollup_alerts, :class_name => 'Flapjack::Data::RollupAlert'
 
-      # TODO validate uniqueness of :name, :scope => :entity_name
+      # TODO validate uniqueness of :name within entity
 
       validates :name, :presence => true
-      validates :entity_name, :presence => true
       validates :state,
         :inclusion => {:in => Flapjack::Data::CheckState.all_states, :allow_blank => true }
 
       before_validation :create_ack_hash
       validates :ack_hash, :presence => true
-
-      around_create :handle_state_change_and_enabled
-      around_update :handle_state_change_and_enabled
-
-      attr_accessor :count
 
       # TODO handle JSON exception
       def perfdata
@@ -110,13 +107,9 @@ module Flapjack
         self.perfdata_json = @perfdata.nil? ? nil : @perfdata.to_json
       end
 
-      def entity
-        @entity ||= Flapjack::Data::Entity.intersect(:name => self.entity_name).all.first
-      end
-
       def self.hash_by_entity_name(checks)
         checks.inject({}) {|memo, check|
-          en = check.entity_name
+          en = check.entity.name
           memo[en] = [] unless memo.has_key?(en)
           memo[en] << check
           memo
@@ -166,10 +159,10 @@ module Flapjack
           check_age = start_time.to_i - check.last_update
           check_age = 0 unless check_age > 0
           if check_age >= ages.last
-            memo[ages.last] << "#{check.entity_name}:#{check.name}"
+            memo[ages.last] << "#{check.entity.name}:#{check.name}"
           else
             age_range = age_ranges.detect {|a, b| check_age < a && check_age >= b }
-            memo[age_range.last] << "#{check.entity_name}:#{check.name}" unless age_range.nil?
+            memo[age_range.last] << "#{check.entity.name}:#{check.name}" unless age_range.nil?
           end
           memo
         end
@@ -198,14 +191,23 @@ module Flapjack
         !unscheduled_maintenance_ids_at(Time.now).empty?
       end
 
-      def handle_state_change_and_enabled
-        if self.changed.include?('last_update')
+      def state_change(opts =  {})
+        prev_state = self.state
+
+        if opts.has_key?(:last_update) && !opts[:last_update].nil?
+          if opts.has_key?(:state) && !opts[:state].nil?
+            self.previous_state = self.state
+            self.state = opts[:state]
+          end
+          self.last_update = opts[:last_update]
           self.enabled = true
         end
 
-        yield
+        enabling = self.changed.include?('enabled')
 
-        if self.changed.include?('enabled')
+        self.save
+
+        if enabling
           entity = self.entity
 
           if self.enabled
@@ -220,18 +222,30 @@ module Flapjack
         end
 
         # TODO validation for: if state has changed, last_update must have changed
-        return unless self.changed.include?('last_update') && self.changed.include?('state')
+        return if opts[:last_update].nil? || !opts.has_key?(:state) ||
+          (opts[:state] == prev_state)
 
-        # FIXME: Iterate through a list of tags associated with an entity:check pair, and update counters
+        old_state = self.current_state
 
-        check_state = Flapjack::Data::CheckState.new(:state => self.state,
-          :timestamp => self.last_update,
-          :summary => self.summary,
-          :details => self.details,
-          :count => self.count)
+        unless old_state.nil?
+          history = self.state_history.nil? ? Flapjack::Data::CheckStateHistory.new :
+                                              self.state_history
 
+          history.state     = old_state.state
+          history.summaries = old_state.summaries
+          history.details   = old_state.details
+          history.notified  = old_state.notified
+          history.save
+
+          self.state_history = history if self.state_history.nil?
+        end
+
+        check_state = Flapjack::Data::CheckState.new(:state => opts[:state],
+          :timestamp => opts[:last_update])
         check_state.save
-        self.states << check_state
+        self.current_state = check_state
+
+        old_state.destroy unless old_state.nil?
       end
 
       def add_scheduled_maintenance(sched_maint)
@@ -310,39 +324,41 @@ module Flapjack
         self.unscheduled_maintenances_by_end.add(unsched_maint)
       end
 
-      def last_notification
-        events = [self.unscheduled_maintenances_by_start.intersect(:notified => true).last,
-                  self.states.intersect(:notified => true).last].compact
+      # TODO statically store the correct answer, update when changing relevant values
 
-        case events.size
-        when 2
-          events.max_by(&:last_notification_count)
-        when 1
-          events.first
-        else
-          nil
-        end
-      end
+      # def last_notification
+      #   events = [self.unscheduled_maintenances_by_start.intersect(:notified => true).last,
+      #             self.states.intersect(:notified => true).last].compact
 
-      def max_notified_severity_of_current_failure
-        last_recovery = self.states.intersect(:notified => true, :state => 'ok').last
-        last_recovery_time = last_recovery ? last_recovery.timestamp.to_i : 0
+      #   case events.size
+      #   when 2
+      #     events.max_by(&:last_notification_count)
+      #   when 1
+      #     events.first
+      #   else
+      #     nil
+      #   end
+      # end
 
-        states_since_last_recovery =
-          self.states.intersect_range(last_recovery_time, nil, :by_score => true).
-            collect(&:state).uniq
+      # def max_notified_severity_of_current_failure
+      #   last_recovery = self.states.intersect(:notified => true, :state => 'ok').last
+      #   last_recovery_time = last_recovery ? last_recovery.timestamp.to_i : 0
 
-        ['critical', 'warning', 'unknown'].detect {|st| states_since_last_recovery.include?(st) }
-      end
+      #   states_since_last_recovery =
+      #     self.states.intersect_range(last_recovery_time, nil, :by_score => true).
+      #       collect(&:state).uniq
+
+      #   ['critical', 'warning', 'unknown'].detect {|st| states_since_last_recovery.include?(st) }
+      # end
 
       def tags
-        @tags ||= Set.new(self.entity_name.split('.', 2).map(&:downcase) +
+        @tags ||= Set.new(self.entity.name.split('.', 2).map(&:downcase) +
                           self.name.split(' ').map(&:downcase))
       end
 
       private
 
-      # would need to be "#{entity_name}:#{name}" to be compatible with v1, but
+      # would need to be "#{self.entity.name}:#{name}" to be compatible with v1, but
       # to support name changes it must be something invariant
       def create_ack_hash
         return unless self.id.nil? # :on => :create isn't working
@@ -370,6 +386,13 @@ module Flapjack
           intersect_range(at_time.to_i + 1, nil, :by_score => true).ids
 
         start_prior_ids & end_later_ids
+      end
+
+      def create_history
+        history = Flapjack::Data::CheckHistory.new
+        history.save
+
+        self.history = history
       end
 
     end

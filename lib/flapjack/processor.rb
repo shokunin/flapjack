@@ -36,8 +36,8 @@ module Flapjack
       @notifier_queue = Flapjack::RecordQueue.new(@config['notifier_queue'] || 'notifications',
                  Flapjack::Data::Notification)
 
-      @archive_events        = @config['archive_events'] || false
-      @events_archive_maxage = @config['events_archive_maxage']
+      # @archive_events        = @config['archive_events'] || false
+      # @events_archive_maxage = @config['events_archive_maxage']
 
       ncsm_duration_conf = @config['new_check_scheduled_maintenance_duration'] || '100 years'
       @ncsm_duration = ChronicDuration.parse(ncsm_duration_conf, :keep_zero => true)
@@ -97,9 +97,10 @@ module Flapjack
 
         loop do
           @lock.synchronize do
-            foreach_on_queue(queue,
-                             :archive_events => @archive_events,
-                             :events_archive_maxage => @events_archive_maxage) do |event|
+            foreach_on_queue(queue #,
+                             # :archive_events => @archive_events,
+                             # :events_archive_maxage => @events_archive_maxage
+                             ) do |event|
               process_event(event)
             end
           end
@@ -123,28 +124,28 @@ module Flapjack
     def foreach_on_queue(queue, opts = {})
       base_time_str = Time.now.utc.strftime "%Y%m%d%H"
       rejects = "events_rejected:#{base_time_str}"
-      archive = opts[:archive_events] ? "events_archive:#{base_time_str}" : nil
-      max_age = archive ? opts[:events_archive_maxage] : nil
+      # archive = opts[:archive_events] ? "events_archive:#{base_time_str}" : nil
+      # max_age = archive ? opts[:events_archive_maxage] : nil
 
-      while event_json = (archive ? Flapjack.redis.rpoplpush(queue, archive) :
+      while event_json = (#archive ? Flapjack.redis.rpoplpush(queue, archive) :
                                     Flapjack.redis.rpop(queue))
         parsed = Flapjack::Data::Event.parse_and_validate(event_json, :logger => @logger)
         if parsed.nil?
-          if archive
-            Flapjack.redis.multi
-            Flapjack.redis.lrem(archive, 1, event_json)
-          end
+          # if archive
+          #   Flapjack.redis.multi
+          #   Flapjack.redis.lrem(archive, 1, event_json)
+          # end
           Flapjack.redis.lpush(rejects, event_json)
           Flapjack.redis.hincrby('event_counters', 'all', 1)
           Flapjack.redis.hincrby("event_counters:#{@instance_id}", 'all', 1)
           Flapjack.redis.hincrby('event_counters', 'invalid', 1)
           Flapjack.redis.hincrby("event_counters:#{@instance_id}", 'invalid', 1)
-          if archive
-            Flapjack.redis.exec
-            Flapjack.redis.expire(archive, max_age)
-          end
+          # if archive
+          #   Flapjack.redis.exec
+          #   Flapjack.redis.expire(archive, max_age)
+          # end
         else
-          Flapjack.redis.expire(archive, max_age) if archive
+          # Flapjack.redis.expire(archive, max_age) if archive
           yield Flapjack::Data::Event.new(parsed) if block_given?
         end
       end
@@ -165,27 +166,24 @@ module Flapjack
 
       timestamp = Time.now.to_i
 
-      entity_name, check_name = event.id.split(':', 2);
-      check = Flapjack::Data::Check.intersect(:entity_name => entity_name,
-        :name => check_name).all.first
+      entity_name, check_name = event.id.split(':', 2)
 
-      entity_for_check = nil
+      entity = Flapjack::Data::Entity.intersect(:name => entity_name).all.first
+      if entity.nil?
+        entity = Flapjack::Data::Entity.new(:name => entity_name, :enabled => true)
+        entity.save
+      end
 
+      check = entity.checks.intersect(:name => check_name).all.first
       if check.nil?
-        unless entity_for_check = Flapjack::Data::Entity.intersect(:name => entity_name).all.first
-          entity_for_check = Flapjack::Data::Entity.new(:name => entity_name, :enabled => true)
-          entity_for_check.save
-        end
-
-        check = Flapjack::Data::Check.new(:entity_name => entity_name,
-          :name => check_name)
-
+        check = Flapjack::Data::Check.new(:name => check_name)
         # not saving yet as check state isn't set, requires that for validation
         # TODO maybe change that?
       end
 
-      should_notify, previous_state, action = update_keys(event, check, timestamp)
+      should_notify, action = update_keys(event, check, timestamp)
 
+      was_new_check = !check.persisted?
       check.save
 
       if @ncsm_sched_maint
@@ -194,31 +192,29 @@ module Flapjack
         @ncsm_sched_maint = nil
       end
 
-      unless entity_for_check.nil?
+      if was_new_check
         # action won't have been added to the check's actions set yet
         check.actions << action
         # created a new check, so add it to the entity's check list
-        entity_for_check.checks << check
+        entity.checks << check
       end
 
       if !should_notify
         @logger.debug("Not generating notification for event #{event.id} because filtering was skipped")
         return
-      elsif blocker = @filters.find {|filter| filter.block?(event, check, previous_state) }
+      elsif blocker = @filters.find {|filter| filter.block?(event, check) }
         @logger.debug("Not generating notification for event #{event.id} because this filter blocked: #{blocker.name}")
         return
       end
 
-      # redis_record rework -- up to here
       @logger.info("Generating notification for event #{event_str}")
-      generate_notification(event, check, timestamp, previous_state)
+      generate_notification(event, check, timestamp)
     end
 
     def update_keys(event, check, timestamp)
       touch_keys
 
       result = true
-      previous_state = nil
 
       event.counter = Flapjack.redis.hincrby('event_counters', 'all', 1)
       Flapjack.redis.hincrby("event_counters:#{@instance_id}", 'all', 1)
@@ -244,10 +240,7 @@ module Flapjack
         end
         Flapjack.redis.exec
 
-        # not available from an unsaved check
-        previous_state = check.id.nil? ? nil : check.states.last
-
-        if previous_state.nil?
+        if check.state.nil?
           @logger.info("No previous state for event #{event.id}")
 
           if (@ncsm_duration > 0) && ((event.tags || []) & @ncsm_ignore_tags).empty?
@@ -266,14 +259,10 @@ module Flapjack
           end
         end
 
-        # this creates a new entry in check.states, through the magic
-        # of callbacks
-        check.state       = event.state
-        check.summary     = event.summary
-        check.details     = event.details
-        check.count       = event.counter
-        check.perfdata    = event.perfdata
-        check.last_update = timestamp
+        # TODO rename 'last_update' here
+        check.state_change(:state => event.state, :summary => event.summary,
+          :details => event.details, :perfdata => event.perfdata,
+          :last_update => timestamp)
 
       # Action events represent human or automated interaction with Flapjack
       when 'action'
@@ -294,40 +283,67 @@ module Flapjack
         @logger.error("Invalid event received: #{event.inspect}")
       end
 
-      [result, previous_state, action]
+      [result, action]
     end
 
-    def generate_notification(event, check, timestamp, previous_state)
-      max_notified_severity = check.max_notified_severity_of_current_failure
-
-      current_state = check.states.last
+    def generate_notification(event, check, timestamp)
+      current_state = check.current_state
 
       # TODO should probably look these up by 'timestamp', last may not be safe...
       case event.type
       when 'service'
+
+        @logger.debug("previous max severity: #{check.max_notified_severity}")
+
         if Flapjack::Data::CheckState.failing_states.include?( event.state )
           check.last_problem_alert = timestamp
-          check.save
+
+          case check.max_notified_severity
+          when nil
+            check.max_notified_severity = event.state
+          when 'unknown'
+            check.max_notified_severity = event.state if ['warning', 'critical'].include?(event.state)
+          when 'warning'
+            check.max_notified_severity = event.state if 'critical'.eql?(event.state)
+          end
+          severity = check.max_notified_severity
+        else
+          severity = ['critical', 'warning', 'unknown', 'ok'].detect {|st|
+            [event.state, check.max_notified_severity].include?(st)
+          }
+          check.max_notified_severity = nil
         end
+
+        @logger.debug("current max severity: #{check.max_notified_severity}")
+
+        check.last_notification = timestamp
+        check.save
 
         current_state.notified = true
         current_state.last_notification_count = event.counter
         current_state.save
       when 'action'
         if event.state == 'acknowledgement'
+          severity = ['critical', 'warning', 'unknown', 'ok'].detect {|st|
+            [event.state, check.max_notified_severity].include?(st)
+          }
+
+          check.last_notification = timestamp
+          check.save
+
           unsched_maint = check.unscheduled_maintenances_by_start.last
           unsched_maint.notified = true
           unsched_maint.last_notification_count = event.counter
           unsched_maint.save
+        elsif event.state == 'test_notifications'
+          severity = 'critical'
         end
       end
-
-      severity = Flapjack::Data::Notification.severity_for_state(event.state,
-                   max_notified_severity)
 
       @logger.debug("Notification is being generated for #{event.id}: " + event.inspect)
 
       notification = Flapjack::Data::Notification.new(
+        :state             => event.state,
         :state_duration    => (current_state ? (timestamp - current_state.timestamp.to_i) : nil),
         :severity          => severity,
         :type              => event.notification_type,
@@ -339,8 +355,8 @@ module Flapjack
       notification.save
 
       check.notifications << notification
-      current_state.current_notifications << notification unless current_state.nil?
-      previous_state.previous_notifications << notification unless previous_state.nil?
+      # current_state.current_notifications << notification unless current_state.nil?
+      # previous_state.previous_notifications << notification unless previous_state.nil?
 
       @notifier_queue.push(notification)
     end

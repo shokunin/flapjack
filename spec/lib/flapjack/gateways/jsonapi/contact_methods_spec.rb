@@ -83,7 +83,7 @@ describe 'Flapjack::Gateways::JSONAPI::ContactMethods', :sinatra => true, :logge
 
   it "does not return information for a contact that does not exist" do
     expect(Flapjack::Data::Contact).to receive(:find_by_ids!).
-      with([contact.id]).and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::Contact, [contact.id]))
+      with([contact.id]).and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::Contact, [contact.id]))
 
     get "/contacts/#{contact.id}"
     expect(last_response.status).to eq(404)

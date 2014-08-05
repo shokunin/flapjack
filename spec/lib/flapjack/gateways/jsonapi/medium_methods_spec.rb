@@ -97,7 +97,7 @@ describe 'Flapjack::Gateways::JSONAPI::MediumMethods', :sinatra => true, :logger
 
   it "does not return a medium if the medium is not present" do
     expect(Flapjack::Data::Medium).to receive(:find_by_ids!).with([medium.id]).
-      and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::Medium, [medium.id]))
+      and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::Medium, [medium.id]))
 
     get "/media/#{medium.id}"
     expect(last_response).to be_not_found
@@ -135,7 +135,7 @@ describe 'Flapjack::Gateways::JSONAPI::MediumMethods', :sinatra => true, :logger
 
   it "does not update a medium that's not present" do
     expect(Flapjack::Data::Medium).to receive(:find_by_ids!).with([medium.id]).
-      and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::Medium, [medium.id]))
+      and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::Medium, [medium.id]))
 
     patch "/media/#{medium.id}",
       [{:op => 'replace', :path => '/media/0/address', :value => 'xyz@example.com'}].to_json,
@@ -167,7 +167,7 @@ describe 'Flapjack::Gateways::JSONAPI::MediumMethods', :sinatra => true, :logger
 
   it "does not delete a medium that's not found" do
     expect(Flapjack::Data::Medium).to receive(:find_by_ids!).with([medium.id]).
-      and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::Medium, [medium.id]))
+      and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::Medium, [medium.id]))
 
     delete "/media/#{medium.id}"
     expect(last_response).to be_not_found

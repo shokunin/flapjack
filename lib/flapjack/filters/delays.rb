@@ -19,7 +19,7 @@ module Flapjack
     class Delays
       include Base
 
-      def block?(event, check, previous_state)
+      def block?(event, check)
         failure_delay = 30
         resend_delay  = 60
 
@@ -35,7 +35,7 @@ module Flapjack
           return false
         end
 
-        last_change        = check.states.last
+        last_change        = check.current_state
         last_notif         = check.last_notification
 
         last_change_time   = last_change  ? last_change.timestamp  : nil
@@ -55,7 +55,7 @@ module Flapjack
                       "event.state: [#{event.state}], " +
                       "last_alert_state == event.state ? #{last_alert_state == event.state}")
 
-        if current_state_duration < failure_delay
+        if current_state_duration.nil? || (current_state_duration < failure_delay)
           @logger.debug("#{label} block - duration of current failure " +
                      "(#{current_state_duration}) is less than failure_delay (#{failure_delay})")
           return true

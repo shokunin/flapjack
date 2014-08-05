@@ -225,8 +225,10 @@ module Flapjack
         entity_stats
         time = Time.now
 
-        @states = Flapjack::Data::Check.intersect(:entity_name => @entity_name).
-          all.sort_by(&:name).map {|check|
+        entity = Flapjack::Data::Entity.intersect(:name => @entity_name).all.first
+        return 404 if check.nil?
+
+        @states = entity.checks.all.sort_by(&:name).map {|check|
             [check.name] + check_state(check, time)
           }.sort_by {|parts| parts }
 
@@ -239,14 +241,15 @@ module Flapjack
 
         @current_time = Time.now
 
-        check = Flapjack::Data::Check.intersect(:entity_name => @entity_name,
-          :name => @check_name).all.first
+        entity = Flapjack::Data::Entity.intersect(:name => @entity_name).all.first
+        return 404 if entity.nil?
+
+        check = entity.checks.intersect(:name => @check_name).all.first
         return 404 if check.nil?
 
         check_stats
-        states = check.states
 
-        last_change = states.last
+        last_change = check.current_state
         last_update = check.last_update
 
         @check_state            = check.state
@@ -267,8 +270,11 @@ module Flapjack
 
         @contacts                   = check.contacts.all
 
-        @state_changes = states.intersect_range(nil, @current_time.to_i,
-                           :order => 'desc', :limit => 20, :by_score => true).all
+        # TODO
+        @state_changes = []
+
+        # @state_changes = states.intersect_range(nil, @current_time.to_i,
+        #                    :order => 'desc', :limit => 20, :by_score => true).all
 
         erb 'check.html'.to_sym
       end
@@ -282,8 +288,10 @@ module Flapjack
         dur = ChronicDuration.parse(params[:duration] || '')
         duration = (dur.nil? || (dur <= 0)) ? (4 * 60 * 60) : dur
 
-        check = Flapjack::Data::Check.intersect(:entity_name => entity_name,
-          :name => check_name).all.first
+        entity = Flapjack::Data::Entity.intersect(:name => entity_name).all.first
+        return 404 if entity.nil?
+
+        check = entity.checks.intersect(:name => check_name).all.first
         return 404 if check.nil?
 
         ack = Flapjack::Data::Event.create_acknowledgement(
@@ -303,8 +311,10 @@ module Flapjack
         entity_name = params[:entity]
         check_name  = params[:check]
 
-        check = Flapjack::Data::Check.intersect(:entity_name => entity_name,
-          :name => check_name).all.first
+        entity = Flapjack::Data::Entity.intersect(:name => entity_name).all.first
+        return 404 if entity.nil?
+
+        check = entity.checks.intersect(:name => check_name).all.first
         return 404 if check.nil?
 
         check.end_unscheduled_maintenance(Time.now.to_i)
@@ -322,8 +332,10 @@ module Flapjack
         duration   = ChronicDuration.parse(params[:duration])
         summary    = params[:summary]
 
-        check = Flapjack::Data::Check.intersect(:entity_name => entity_name,
-          :name => check_name).all.first
+        entity = Flapjack::Data::Entity.intersect(:name => entity_name).all.first
+        return 404 if entity.nil?
+
+        check = entity.checks.intersect(:name => check_name).all.first
         return 404 if check.nil?
 
         sched_maint = Flapjack::Data::ScheduledMaintenance.new(:start_time => start_time,
@@ -339,9 +351,10 @@ module Flapjack
         entity_name = params[:entity]
         check_name  = params[:check]
 
-        check = Flapjack::Data::Check.intersect(:entity_name => entity_name,
-          :name => check_name).all.first
+        entity = Flapjack::Data::Entity.intersect(:name => entity_name).all.first
+        return 404 if entity.nil?
 
+        check = entity.checks.intersect(:name => check_name).all.first
         return 404 if check.nil?
 
         # TODO better error checking on this param?
@@ -365,8 +378,10 @@ module Flapjack
         entity_name = params[:entity]
         check_name  = params[:check]
 
-        check = Flapjack::Data::Check.intersect(:entity_name => entity_name,
-          :name => check_name).all.first
+        entity = Flapjack::Data::Entity.intersect(:name => entity_name).all.first
+        return 404 if entity.nil?
+
+        check = entity.checks.intersect(:name => check_name).all.first
         return 404 if check.nil?
 
         check.enabled = false
@@ -489,17 +504,18 @@ module Flapjack
       end
 
       def last_notification_data(check, time)
-        states = check.states
-        ['critical', 'warning', 'unknown', 'recovery', 'acknowledgement'].inject({}) do |memo, type|
-          state = (type == 'recovery') ? 'ok' : type
-          notif = states.intersect(:state => state, :notified => true).last
-          next memo if (notif.nil? || notif.timestamp.nil?)
-          t = Time.at(notif.timestamp)
-          memo[type.to_sym] = {:time => t.to_s,
-                               :relative => relative_time_ago(time, t) + " ago",
-                               :summary => notif.summary}
-          memo
-        end
+        {}
+        # states = check.states
+        # ['critical', 'warning', 'unknown', 'recovery', 'acknowledgement'].inject({}) do |memo, type|
+        #   state = (type == 'recovery') ? 'ok' : type
+        #   notif = states.intersect(:state => state, :notified => true).last
+        #   next memo if (notif.nil? || notif.timestamp.nil?)
+        #   t = Time.at(notif.timestamp)
+        #   memo[type.to_sym] = {:time => t.to_s,
+        #                        :relative => relative_time_ago(time, t) + " ago",
+        #                        :summary => notif.summary}
+        #   memo
+        # end
       end
 
       def require_js(*js)

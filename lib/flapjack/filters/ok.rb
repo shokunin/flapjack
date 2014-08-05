@@ -15,7 +15,7 @@ module Flapjack
     class Ok
       include Base
 
-      def block?(event, check, previous_state)
+      def block?(event, check)
         unless Flapjack::Data::CheckState.ok_states.include?( event.state )
           @logger.debug("Filter: Ok: pass")
           return false
@@ -23,7 +23,7 @@ module Flapjack
 
         check.clear_unscheduled_maintenance(Time.now)
 
-        if !previous_state.nil? && Flapjack::Data::CheckState.ok_states.include?( previous_state.state )
+        if !check.previous_state.nil? && Flapjack::Data::CheckState.ok_states.include?( check.previous_state )
           @logger.debug("Filter: Ok: block - previous state was ok, so blocking")
           return true
         end
@@ -43,7 +43,7 @@ module Flapjack
           return true
         end
 
-        @logger.debug("Filter: Ok: previous_state: #{previous_state.inspect}")
+        @logger.debug("Filter: Ok: previous_state: #{check.previous_state}")
         @logger.debug("Filter: Ok: pass")
         false
       end

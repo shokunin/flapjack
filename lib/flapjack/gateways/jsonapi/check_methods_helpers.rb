@@ -108,7 +108,7 @@ module Flapjack
             Flapjack::Data::Check.find_by_ids!(check_ids).each do |check|
               test_notifications.each do |wp|
                 summary = wp['summary'] ||
-                          "Testing notifications to all contacts interested in entity #{check.entity_name}"
+                          "Testing notifications to all contacts interested in entity #{check.entity.name}"
                 Flapjack::Data::Event.test_notifications(
                   config['processor_queue'] || 'events',
                   check, :summary => summary)

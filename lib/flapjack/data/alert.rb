@@ -2,7 +2,7 @@
 
 require 'active_support/inflector'
 
-require 'sandstorm/record'
+require 'sandstorm/records/redis_record'
 
 require 'flapjack/utility'
 
@@ -14,7 +14,7 @@ module Flapjack
     class Alert
 
       include Flapjack::Utility
-      include Sandstorm::Record
+      include Sandstorm::Records::RedisRecord
 
       define_attributes :state        => :string,
                         :summary      => :string,
@@ -117,7 +117,7 @@ module Flapjack
         if rollup
           msg += " - #{rollup_states_summary} (#{rollup_states_detail_text(:max_checks_per_state => 3)})"
         else
-          msg += " - '#{self.check.name}' on #{self.check.entity_name}"
+          msg += " - '#{self.check.name}' on #{self.check.entity.name}"
           unless ['acknowledgement', 'test'].include?(type)
             msg += " is #{state_title_case}"
           end

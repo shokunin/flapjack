@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-require 'sandstorm/record'
+require 'sandstorm/records/redis_record'
 
 require 'flapjack/data/contact'
 require 'flapjack/data/check'
@@ -13,7 +13,7 @@ module Flapjack
 
       # TODO how to integrate contacts_for:ALL ?
 
-      include Sandstorm::Record
+      include Sandstorm::Records::RedisRecord
 
       include ActiveModel::Serializers::JSON
       self.include_root_in_json = false
@@ -50,7 +50,7 @@ module Flapjack
           k =~ /\A#{class_key}:([^:]+):attrs:#{key.to_s}\z/
           find_by_id($1)
         }
-        temp_set = "#{class_key}::tmp:#{SecureRandom.hex(16)}"
+        temp_set = "#{class_key}::tmp:#{generate_id}"
         Flapjack.redis.sadd(temp_set, values)
 
         keys = Flapjack.redis.keys("#{class_key}:*:attrs:#{key}")

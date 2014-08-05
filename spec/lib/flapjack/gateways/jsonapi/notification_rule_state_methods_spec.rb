@@ -47,7 +47,7 @@ describe 'Flapjack::Gateways::JSONAPI::NotificationRuleStateMethods', :sinatra =
   it "does not get a notification rule state that does not exist" do
     expect(Flapjack::Data::NotificationRuleState).to receive(:find_by_ids!).
       with([notification_rule_state.id]).
-      and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRuleState, [notification_rule_state.id]))
+      and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRuleState, [notification_rule_state.id]))
 
     get "/notification_rule_states/#{notification_rule_state.id}"
     expect(last_response).to be_not_found
@@ -85,7 +85,7 @@ describe 'Flapjack::Gateways::JSONAPI::NotificationRuleStateMethods', :sinatra =
 
   it "does not update a notification rule state that does not exist" do
     expect(Flapjack::Data::NotificationRuleState).to receive(:find_by_ids!).with([notification_rule_state.id]).
-      and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRuleState, [notification_rule_state.id]))
+      and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRuleState, [notification_rule_state.id]))
 
     patch "/notification_rule_states/#{notification_rule_state.id}",
       [{:op => 'replace', :path => '/notification_rule_states/0/blackhole', :value => true}].to_json,

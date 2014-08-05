@@ -10,17 +10,17 @@ Feature: events
   Scenario: Check ok to ok
     Given the check is in an ok state
     When  an ok event is received
-    Then  a notification should not be generated
+    Then  no notifications should be queued
 
   Scenario: Check ok to warning
     Given the check is in an ok state
     When  a warning event is received
-    Then  a notification should not be generated
+    Then  no notifications should be queued
 
   Scenario: Check ok to critical
     Given the check is in an ok state
     When  a critical event is received
-    Then  a notification should not be generated
+    Then  no notifications should be queued
 
   @time
   Scenario: Check critical to critical after 10 seconds
@@ -28,7 +28,7 @@ Feature: events
     When  a critical event is received
     And   10 seconds passes
     And   a critical event is received
-    Then  a notification should not be generated
+    Then  no notifications should be queued
 
   @time
   Scenario: Check ok to warning for 1 minute
@@ -36,7 +36,7 @@ Feature: events
     When  a warning event is received
     And   1 minute passes
     And   a warning event is received
-    Then  a notification should be generated
+    Then  1 notification should be queued
 
   @time
   Scenario: Check ok to critical for 1 minute
@@ -44,7 +44,7 @@ Feature: events
     When  a critical event is received
     And   1 minute passes
     And   a critical event is received
-    Then  a notification should be generated
+    Then  1 notification should be queued
 
   @time
   Scenario: Check ok to warning, 1 min, then critical
@@ -52,13 +52,13 @@ Feature: events
     When  a warning event is received
     And   1 minute passes
     And   a warning event is received
-    Then  a notification should be generated
+    Then  1 notification should be queued
     And   1 minute passes
     When  a critical event is received
-    Then  a notification should not be generated
+    Then  1 notification should be queued
     When  1 minute passes
     And   a critical event is received
-    Then  a notification should be generated
+    Then  2 notifications should be queued
 
   @time
   Scenario: Check critical and alerted to critical for 40 seconds
@@ -66,10 +66,10 @@ Feature: events
     When  a critical event is received
     And   1 minute passes
     And   a critical event is received
-    Then  a notification should be generated
+    Then  1 notification should be queued
     When  40 seconds passes
     And   a critical event is received
-    Then  a notification should not be generated
+    Then  2 notifications should be queued
 
   @time
   Scenario: Check critical and alerted to critical for 6 minutes
@@ -77,10 +77,10 @@ Feature: events
     When  a critical event is received
     And   1 minute passes
     And   a critical event is received
-    Then  a notification should be generated
+    Then  1 notification should be queued
     When  6 minutes passes
     And   a critical event is received
-    Then  a notification should be generated
+    Then  2 notifications should be queued
 
   @time
   Scenario: Check ok to critical for 1 minute when in scheduled maintenance
@@ -89,7 +89,7 @@ Feature: events
     When  a critical event is received
     And   1 minute passes
     And   a critical event is received
-    Then  a notification should not be generated
+    Then  no notifications should be queued
 
   @time
   Scenario: Alert when coming out of scheduled maintenance
@@ -98,13 +98,13 @@ Feature: events
     When  a critical event is received
     And   1 minute passes
     And   a critical event is received
-    Then  a notification should not be generated
+    Then  no notifications should be queued
     And   2 hours passes
     And   a critical event is received
-    Then  a notification should not be generated
+    Then  no notifications should be queued
     When  1 hours passes
     And   a critical event is received
-    Then  a notification should be generated
+    Then  1 notification should be queued
 
   @time
   Scenario: Check ok to critical for 1 minute when in unscheduled maintenance

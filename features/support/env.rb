@@ -33,15 +33,15 @@ $: << File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'lib'))
 require 'pathname'
 
 require 'webmock/cucumber'
-WebMock.disable_net_connect!
+WebMock.disable_net_connect!(:allow => 'localhost:8086')
 
 require 'oj'
-Oj.mimic_JSON
 Oj.default_options = { :indent => 0, :mode => :strict }
+require 'oj_mimic_json'
 require 'active_support/json'
 
+require 'flapjack'
 require 'flapjack/patches'
-require 'flapjack/redis_proxy'
 
 require 'flapjack/data/check'
 require 'flapjack/data/event'
@@ -121,14 +121,23 @@ EXPIRE_AS_IF_AT
 
 end
 
-config = Flapjack::Configuration.new
-Flapjack::RedisProxy.config = config.load(FLAPJACK_CONFIG) ?
-                                config.for_redis :
-                                {:db => 14, :driver => :ruby}
+cfg = Flapjack::Configuration.new
+$redis_options, $influxdb_options = if cfg.load(FLAPJACK_CONFIG)
+  [cfg.for_redis, cfg.for_influxdb]
+else
+  [{:db => 14, :driver => :ruby},
+   {'database' => 'flapjack_test',
+    'username' => 'flapjack', 'password' => 'flapjack'}]
+end
+
+Flapjack::RedisProxy.config = $redis_options
 Sandstorm.redis = Flapjack.redis
 Flapjack.redis.flushdb
 RedisDelorean.before_all
 Flapjack.redis.quit
+
+Flapjack::InfluxDBProxy.config = $influxdb_options
+Sandstorm.influxdb = Flapjack.influxdb
 
 # Not the most efficient of operations...
 def redis_peek(queue, klass, start = 0, count = nil)
@@ -156,6 +165,7 @@ end
 
 Before('@processor') do
   Flapjack.redis.flushdb
+  Sandstorm.influxdb.query('DELETE FROM /.*/')
   @processor = Flapjack::Processor.new(:logger => @logger, :config => {})
 end
 
@@ -165,6 +175,7 @@ end
 
 Before('@notifier') do
   Flapjack.redis.flushdb
+  Sandstorm.influxdb.query('DELETE FROM /.*/')
   @notifier  = Flapjack::Notifier.new(:logger => @logger,
     :config => {'email_queue' => 'email_notifications',
                 'sms_queue' => 'sms_notifications',

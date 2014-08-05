@@ -244,7 +244,8 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
     expect(Flapjack::Data::Check).to receive(:find_by_ids!).
       with([check.id]).and_return([check])
 
-    expect(check).to receive(:entity_name).and_return('www.example.com')
+    expect(entity).to receive(:name).and_return('www.example.com')
+    expect(check).to receive(:entity).and_return(entity)
 
     expect(Flapjack::Data::Event).to receive(:test_notifications).
       with('events', check, an_instance_of(Hash))

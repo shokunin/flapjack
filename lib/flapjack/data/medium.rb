@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-require 'sandstorm/record'
+require 'sandstorm/records/redis_record'
 
 module Flapjack
 
@@ -8,7 +8,7 @@ module Flapjack
 
     class Medium
 
-      include Sandstorm::Record
+      include Sandstorm::Records::RedisRecord
 
       TYPES = ['email', 'sms', 'jabber', 'pagerduty']
 

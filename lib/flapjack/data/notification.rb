@@ -4,7 +4,7 @@
 # from which individual 'Message' objects are created, one for each
 # contact+media recipient.
 
-require 'sandstorm/record'
+require 'sandstorm/records/redis_record'
 
 require 'flapjack/data/alert'
 require 'flapjack/data/contact'
@@ -13,13 +13,12 @@ module Flapjack
   module Data
     class Notification
 
-      include Sandstorm::Record
+      include Sandstorm::Records::RedisRecord
 
       attr_accessor :logger
 
-      # NB can't use has_one associations for the states, as the redis persistence
-      # is only transitory (used to trigger a queue pop)
-      define_attributes :state_duration => :integer,
+      define_attributes :state          => :string,
+                        :state_duration => :integer,
                         :severity       => :string,
                         :type           => :string,
                         :time           => :timestamp,
@@ -30,12 +29,8 @@ module Flapjack
       belongs_to :check, :class_name => 'Flapjack::Data::Check',
         :inverse_of => :notifications
 
-      # state association will not be set for notification tests
-      belongs_to :state, :class_name => 'Flapjack::Data::CheckState',
-        :inverse_of => :current_notifications
-      belongs_to :previous_state, :class_name => 'Flapjack::Data::CheckState',
-        :inverse_of => :previous_notifications
-
+      # TODO validate state in acceptable set
+      validate :state, :presence => true
       validate :state_duration, :presence => true
       validate :severity, :presence => true
       validate :type, :presence => true
@@ -44,29 +39,12 @@ module Flapjack
 
       # TODO ensure 'unacknowledged_failures' behaviour is covered
 
-      # query for 'recovery' notification should be for 'ok' state, intersect notified == true
-      # query for 'acknowledgement' notification should be 'acknowledgement' state, intersect notified == true
-      # any query for 'problem', 'critical', 'warning', 'unknown' notification should be
-      # for union of 'critical', 'warning', 'unknown' states, intersect notified == true
-
-      def self.severity_for_state(state, max_notified_severity)
-        if ([state, max_notified_severity] & ['critical', 'test_notifications']).any?
-          'critical'
-        elsif [state, max_notified_severity].include?('warning')
-          'warning'
-        elsif [state, max_notified_severity].include?('unknown')
-          'unknown'
-        else
-          'ok'
-        end
-      end
-
       def state_or_ack
         case self.type
         when 'acknowledgement', 'test'
           self.type
         else
-          self.state ? self.state.state : nil
+          self.state
         end
       end
 
@@ -80,12 +58,15 @@ module Flapjack
         alert_check = self.check
 
         contacts.inject([]) do |memo, contact|
+
           matchers = matching_rules_for_contact(contact, :check => alert_check,
             :default_timezone => default_timezone)
+
           next memo if matchers.nil?
 
           media_to_use = media_for_contact(contact, matchers, :check => alert_check)
-          next memo if media_to_use.nil? || media_to_use.empty?
+
+          next memo if media_to_use.empty?
 
           media_to_use.each do |medium|
             alert = alert_for_medium(medium, :check => alert_check)
@@ -112,7 +93,7 @@ module Flapjack
         rules = contact.notification_rules
 
         check = options[:check]
-        entity_name = check.entity_name
+        entity_name = check.entity.name
 
         log_rules(rules, "initial")
 
@@ -188,7 +169,6 @@ module Flapjack
           logger.debug "media after contact_drop?: #{final_media.collect(&:type)}"
         end
 
-        return if final_media.empty?
         final_media
       end
 
@@ -201,7 +181,7 @@ module Flapjack
         end
 
         alert_check = opts[:check]
-        entity_name = check.entity_name
+        entity_name = check.entity.name
         check_name = check.name
 
         unless (['ok', 'acknowledgement', 'test'].include?(state_or_ack)) ||

@@ -10,7 +10,7 @@ describe Flapjack::Data::Medium, :redis => true do
     Factory.entity(:name => 'foo.example.com', :id => '5')
     entity = Flapjack::Data::Entity.find_by_id('5')
 
-    Factory.check(entity, :entity_name => entity.name, :name => 'PING',
+    Factory.check(entity, :name => 'PING',
       :id => 1, :enabled => true)
     check = Flapjack::Data::Check.find_by_id('1')
 

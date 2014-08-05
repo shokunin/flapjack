@@ -36,22 +36,6 @@ module Flapjack
       # http://tools.ietf.org/html/rfc6902
       JSON_PATCH_MEDIA_TYPE = 'application/json-patch+json; charset=utf-8'
 
-      class RecordNotFound < RuntimeError
-        attr_reader :klass, :id
-        def initialize(k, i)
-          @klass = k
-          @id    = i
-        end
-      end
-
-      class RecordsNotFound < RuntimeError
-        attr_reader :klass, :ids
-        def initialize(k, i)
-          @klass = k
-          @ids   = i
-        end
-      end
-
       set :raise_errors, true
       set :show_exceptions, false
 
@@ -288,13 +272,13 @@ module Flapjack
         # TODO
       end
 
-      error Sandstorm::Errors::RecordNotFound do
+      error Sandstorm::Records::Errors::RecordNotFound do
         e = env['sinatra.error']
         type = e.klass.name.split('::').last
         err(404, "could not find #{type} record, id: '#{e.id}'")
       end
 
-      error Sandstorm::Errors::RecordsNotFound do
+      error Sandstorm::Records::Errors::RecordsNotFound do
         e = env['sinatra.error']
         type = e.klass.name.split('::').last
         err(404, "could not find #{type} records, ids: '#{e.ids.join(',')}'")

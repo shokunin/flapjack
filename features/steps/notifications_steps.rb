@@ -30,7 +30,7 @@ def find_or_create_entity(entity_data)
       :name => entity_data['name'])
     expect(entity.save).to be true
 
-    check = Flapjack::Data::Check.new(:entity_name => entity.name, :name => 'ping')
+    check = Flapjack::Data::Check.new(:name => 'ping')
     expect(check.save).to be true
 
     entity.checks << check
@@ -74,23 +74,20 @@ When /^an event notification is generated for entity '([\w\.\-]+)'$/ do |entity_
                                     'check'   => 'ping',
                                     'time'    => timestamp)
 
-  check = Flapjack::Data::Check.intersect(:entity_name => entity_name,
-    :name => 'ping').all.first
+
+  entity = Flapjack::Data::Entity.intersect(:name => entity_name).all.first
+  expect(entity).not_to be_nil
+  check = entity.checks.intersect(:name => 'ping').all.first
   expect(check).not_to be_nil
-  check.state = 'critical'
-  check.last_update = timestamp
-  expect(check.save).to be true
+  check.state_change(:state => 'critical', :last_update => timestamp)
 
-  max_notified_severity = check.max_notified_severity_of_current_failure
-  severity = Flapjack::Data::Notification.severity_for_state(event.state,
-               max_notified_severity)
-
-  current_state = check.states.last
-  previous_state = check.states.intersect_range(-2, -1).first
+  current_state = check.current_state
+  # previous_state = check.states.intersect_range(-2, -1).first
 
   notification = Flapjack::Data::Notification.new(
+    :state             => event.state,
     :state_duration    => 0,
-    :severity          => severity,
+    :severity          => 'critical',
     :type              => event.notification_type,
     :time              => event.time,
     :duration          => event.duration,
@@ -103,7 +100,7 @@ When /^an event notification is generated for entity '([\w\.\-]+)'$/ do |entity_
 
   check.notifications << notification
   current_state.current_notifications << notification
-  previous_state.previous_notifications << notification
+  # previous_state.previous_notifications << notification
 
   @notifier.instance_variable_get('@queue').push(notification)
   drain_notifications
@@ -111,13 +108,14 @@ end
 
 Then /^an (SMS|email) notification for entity '([\w\.\-]+)' should( not)? be queued$/ do |medium, entity_name, neg|
   queue = redis_peek("#{medium.downcase}_notifications", Flapjack::Data::Alert)
-  expect(queue.select {|n| n.check.entity_name =~ /#{entity_name}/ }).
+  expect(queue.select {|n| n.check.entity.name =~ /#{entity_name}/ }).
         send((neg ? :to : :not_to), be_empty)
 end
 
 Given /^an (SMS|email) notification has been queued for entity '([\w\.\-]+)'$/ do |media_type, entity_name|
-  check = Flapjack::Data::Check.intersect(:entity_name => entity_name,
-    :name => 'ping').all.first
+  entity = Flapjack::Data::Entity.intersect(:name => entity_name).all.first
+  expect(entity).not_to be_nil
+  check = entity.checks.intersect(:name => 'ping').all.first
   expect(check).not_to be_nil
 
   check.state = 'critical'
@@ -125,7 +123,7 @@ Given /^an (SMS|email) notification has been queued for entity '([\w\.\-]+)'$/ d
   expect(check.save).to be true
 
   @alert = Flapjack::Data::Alert.new(
-    :state => check.states.all.last.state,
+    :state => check.state,
     :rollup => nil,
     :state_duration => 15,
     :notification_type => 'problem',
@@ -135,7 +133,7 @@ Given /^an (SMS|email) notification has been queued for entity '([\w\.\-]+)'$/ d
     raise "Couldn't save alert: #{@alert.errors.full_messages.inspect}"
   end
 
-  contact = check.entity.contacts.all.first
+  contact = entity.contacts.all.first
   expect(contact).not_to be_nil
 
   medium = contact.media.intersect(:type => media_type.downcase).all.first

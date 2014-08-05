@@ -104,9 +104,13 @@ RSpec.configure do |config|
 
   config.before(:suite) do
     cfg = Flapjack::Configuration.new
-    $redis_options = cfg.load(FLAPJACK_CONFIG) ?
-                     cfg.for_redis :
-                     {:db => 14, :driver => :ruby}
+    $redis_options, $influxdb_options = if cfg.load(FLAPJACK_CONFIG)
+      [cfg.for_redis, cfg.for_influxdb]
+    else
+      [{:db => 14, :driver => :ruby},
+       {:database => 'flapjack_test',
+        :username => 'flapjack', :password => 'flapjack'}]
+    end
   end
 
   config.around(:each, :redis => true) do |example|
@@ -115,6 +119,13 @@ RSpec.configure do |config|
     Flapjack.redis.flushdb
     example.run
     Flapjack.redis.quit
+  end
+
+  config.around(:each, :influxdb => true) do |example|
+    Flapjack::InfluxDBProxy.config = $influxdb_options
+    Sandstorm.influxdb = Flapjack.influxdb
+    Sandstorm.influxdb.query('DELETE FROM /.*/')
+    example.run
   end
 
   config.around(:each, :logger => true) do |example|

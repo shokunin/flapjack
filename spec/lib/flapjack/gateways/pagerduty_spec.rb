@@ -63,8 +63,10 @@ describe Flapjack::Gateways::Pagerduty, :logger => true do
                         'description'  => 'Problem: "ping" on app-02 is Critical'}.to_json).
          to_return(:status => 200, :body => {'status' => 'success'}.to_json)
 
+      entity = double(Flapjack::Data::Entity)
       check = double(Flapjack::Data::Check)
-      expect(check).to receive(:entity_name).twice.and_return('app-02')
+      expect(entity).to receive(:name).twice.and_return('app-02')
+      expect(check).to receive(:entity).twice.and_return(entity)
       expect(check).to receive(:name).twice.and_return('ping')
 
       expect(alert).to receive(:address).and_return('pdservicekey')
@@ -84,6 +86,7 @@ describe Flapjack::Gateways::Pagerduty, :logger => true do
 
   context 'acknowledgements' do
 
+    let(:entity) { double(Flapjack::Data::Entity) }
     let(:check) { double(Flapjack::Data::Check) }
 
     let(:status_change) { {'id'        => 'ABCDEFG',
@@ -122,7 +125,9 @@ describe Flapjack::Gateways::Pagerduty, :logger => true do
 
       contacts_all = double(:contacts, :all => [contact])
       expect(check).to receive(:contacts).and_return(contacts_all)
-      expect(check).to receive(:entity_name).twice.and_return('foo-app-01.bar.net')
+
+      expect(entity).to receive(:name).twice.and_return('foo-app-01.bar.net')
+      expect(check).to receive(:entity).twice.and_return(entity)
       expect(check).to receive(:name).twice.and_return('PING')
       expect(check).to receive(:in_unscheduled_maintenance?).and_return(false)
 

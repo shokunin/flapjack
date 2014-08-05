@@ -90,7 +90,7 @@ module Flapjack
       contacts    = check.contacts.all + check.entity.contacts.all
 
       check_name  = check.name
-      entity_name = check.entity_name
+      entity_name = check.entity.name
 
       if contacts.empty?
         @logger.debug("No contacts for '#{entity_name}:#{check_name}'")
@@ -125,7 +125,7 @@ module Flapjack
           Flapjack::Data::Alert, Flapjack::Data::RollupAlert) do
 
           medium.alerting_checks.each do |alert_check|
-            last_state  = alert_check.states.last
+            last_state  = alert_check.current_state
             last_change = last_state.nil? ? nil : last_state.timestamp.to_i
 
             rollup_alert = Flapjack::Data::RollupAlert.new(
@@ -149,7 +149,7 @@ module Flapjack
         elsif notification.state
           medium.update_sent_alert_keys(
             :check => check,
-            :state => notification.state.state)
+            :state => notification.state)
         end
 
         @queues[medium.type].push(alert)

@@ -100,7 +100,7 @@ describe 'Flapjack::Gateways::JSONAPI::NotificationRuleMethods', :sinatra => tru
   it "does not get a notification rule that does not exist" do
     expect(Flapjack::Data::NotificationRule).to receive(:find_by_ids!).
       with([notification_rule.id]).
-      and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRule, [notification_rule.id]))
+      and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRule, [notification_rule.id]))
 
     get "/notification_rules/#{notification_rule.id}"
     expect(last_response).to be_not_found
@@ -138,7 +138,7 @@ describe 'Flapjack::Gateways::JSONAPI::NotificationRuleMethods', :sinatra => tru
 
   it "does not update a notification rule that does not exist" do
     expect(Flapjack::Data::NotificationRule).to receive(:find_by_ids!).with([notification_rule.id]).
-      and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRule, [notification_rule.id]))
+      and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRule, [notification_rule.id]))
 
     patch "/notification_rules/#{notification_rule.id}",
       [{:op => 'replace', :path => '/notification_rules/0/regex_tags', :value => ['.*']}].to_json,
@@ -170,7 +170,7 @@ describe 'Flapjack::Gateways::JSONAPI::NotificationRuleMethods', :sinatra => tru
 
   it "does not delete a notification rule that does not exist" do
     expect(Flapjack::Data::NotificationRule).to receive(:find_by_ids!).with([notification_rule.id]).
-      and_raise(Sandstorm::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRule, [notification_rule.id]))
+      and_raise(Sandstorm::Records::Errors::RecordsNotFound.new(Flapjack::Data::NotificationRule, [notification_rule.id]))
 
     delete "/notification_rules/#{notification_rule.id}"
     expect(last_response).to be_not_found

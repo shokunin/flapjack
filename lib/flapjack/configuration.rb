@@ -50,6 +50,10 @@ module Flapjack
       redis_config
     end
 
+    def for_influxdb
+      @config_env['influxdb'] || {}
+    end
+
     def load(filename)
       @filename = nil
       @config_env = nil
