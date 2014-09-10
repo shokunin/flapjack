@@ -16,7 +16,7 @@ module GLI
 
   class GLIOptionParser
     class NormalCommandOptionParser
-      def parse!(parsing_result)
+      def parse!(parsing_result,argument_handling_strategy)
         parsed_command_options = {}
         command = parsing_result.command
         arguments = nil
@@ -36,12 +36,8 @@ module GLI
           next_command_name               = arguments.shift
 
           gli_major_version, gli_minor_version = GLI::VERSION.split('.')
-          case
-          when (gli_major_version.to_i == 2) && (gli_minor_version.to_i <= 10)
-            verify_required_options!(command.flags, parsed_command_options[command])
-          else
-            verify_required_options!(command.flags, parsing_result.command, parsed_command_options[command])
-          end
+          required_options = [command.flags, parsing_result.command, parsed_command_options[command]]
+          verify_required_options!(*required_options)
 
           begin
             command = command_finder.find_command(next_command_name)
@@ -76,6 +72,10 @@ module GLI
         parsing_result.command_options = command_options
         parsing_result.command = command
         parsing_result.arguments = Array(arguments.compact)
+
+        # Lets validate the arguments now that we know for sure the command that is invoked
+        verify_arguments!(parsing_result.arguments, parsing_result.command) if argument_handling_strategy == :strict
+
         parsing_result
       end
     end

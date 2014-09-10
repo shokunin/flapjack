@@ -28,8 +28,8 @@ module Factory
   def self.entity(attrs = {})
     redis.multi
     redis.hmset("entity:#{attrs[:id]}:attrs", {'name' => attrs[:name]}.flatten)
-    redis.sadd('entity::attrs:ids', attrs[:id].to_s)
-    redis.hset("entity::indices:by_name", attrs[:name], attrs[:id].to_s)
+    redis.sadd('entity::attrs:ids', attrs[:id])
+    redis.hset("entity::indices:by_name", attrs[:name], attrs[:id])
     redis.exec
   end
 
@@ -44,7 +44,6 @@ module Factory
     redis.sadd("check::indices:by_name:#{attrs[:name]}", attrs[:id].to_s)
     redis.sadd("check::indices:by_state:#{attrs[:state]}", attrs[:id].to_s)
     redis.sadd("check::indices:by_enabled:#{!!attrs[:enabled]}", attrs[:id].to_s)
-
     redis.sadd("entity:#{entity.id}:assocs:checks_ids", attrs[:id].to_s)
     redis.exec
   end

@@ -5,6 +5,8 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
 
   include_context "jsonapi"
 
+  let(:backend) { double(Sandstorm::Backends::Base) }
+
   let(:entity)        { double(Flapjack::Data::Entity, :id => '126') }
   let(:check)         { double(Flapjack::Data::Check, :id => '457') }
   let(:entity_data)   {
@@ -16,7 +18,9 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
    }
 
   it "creates an entity" do
-    expect(Flapjack::Data::Entity).to receive(:lock).and_yield
+    expect(Flapjack::Data::Entity).to receive(:backend).and_return(backend)
+    expect(backend).to receive(:lock).with(Flapjack::Data::Entity).and_yield
+
     expect(Flapjack::Data::Entity).to receive(:exists?).with(entity.id).and_return(false)
 
     expect(entity).to receive(:invalid?).and_return(false)
@@ -30,7 +34,9 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
   end
 
   it "does not create an entity if the data is improperly formatted" do
-    expect(Flapjack::Data::Entity).to receive(:lock).and_yield
+    expect(Flapjack::Data::Entity).to receive(:backend).and_return(backend)
+    expect(backend).to receive(:lock).with(Flapjack::Data::Entity).and_yield
+
     expect(Flapjack::Data::Entity).not_to receive(:exists?)
 
     errors = double('errors', :full_messages => ['err'])
@@ -64,7 +70,7 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
       with([entity.id]).and_return({})
     expect(entity).to receive(:as_json).and_return(entity_data)
     expect(Flapjack::Data::Entity).to receive(:find_by_ids!).
-      with([entity.id]).and_return([entity])
+      with(entity.id).and_return([entity])
 
     get "/entities/#{entity.id}"
     expect(last_response).to be_ok
@@ -82,7 +88,7 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
     expect(entity).to receive(:as_json).and_return(entity_data)
     expect(entity_2).to receive(:as_json).and_return(entity_data_2)
     expect(Flapjack::Data::Entity).to receive(:find_by_ids!).
-      with([entity.id, entity_2.id]).and_return([entity, entity_2])
+      with(entity.id, entity_2.id).and_return([entity, entity_2])
 
     get "/entities/#{entity.id},#{entity_2.id}"
     expect(last_response).to be_ok
@@ -91,7 +97,7 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
 
   it "updates an entity" do
     expect(Flapjack::Data::Entity).to receive(:find_by_ids!).
-      with([entity.id]).and_return([entity])
+      with(entity.id).and_return([entity])
 
     expect(entity).to receive(:enabled=).with(true)
     expect(entity).to receive(:save).and_return(true)
@@ -105,7 +111,7 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
 
   it "creates an acknowledgement for all checks on an entity" do
     expect(Flapjack::Data::Check).to receive(:find_by_ids!).
-      with([check.id]).and_return([check])
+      with(check.id).and_return([check])
 
     expect(Flapjack::Data::Event).to receive(:create_acknowledgement).
       with('events', check, :duration => (4 * 60 * 60))
@@ -122,7 +128,7 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
     expect(check).to receive(:clear_unscheduled_maintenance).with(end_time.to_i)
 
     expect(Flapjack::Data::Check).to receive(:find_by_ids!).
-      with([check.id]).and_return([check])
+      with(check.id).and_return([check])
 
     expect(Flapjack::Data::Entity).to receive(:associated_ids_for_checks).
       with([entity.id]).and_return(entity.id => [check.id])
@@ -137,11 +143,12 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
     start = Time.now + (60 * 60) # an hour from now
     duration = (2 * 60 * 60)     # two hours
 
-    expect(Flapjack::Data::Check).to receive(:lock).
-      with(Flapjack::Data::ScheduledMaintenance).and_yield
+    expect(Flapjack::Data::Check).to receive(:backend).and_return(backend)
+    expect(backend).to receive(:lock).
+      with(Flapjack::Data::Check, Flapjack::Data::ScheduledMaintenance).and_yield
 
     expect(Flapjack::Data::Check).to receive(:find_by_ids!).
-      with([check.id]).and_return([check])
+      with(check.id).and_return([check])
 
     sched_maint = double(Flapjack::Data::ScheduledMaintenance)
     expect(sched_maint).to receive(:invalid?).and_return(false)
@@ -187,7 +194,7 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
     expect(check).to receive(:end_scheduled_maintenance).with(sched_maint, an_instance_of(Time))
 
     expect(Flapjack::Data::Check).to receive(:find_by_ids!).
-      with([check.id]).and_return([check])
+      with(check.id).and_return([check])
 
     expect(Flapjack::Data::Entity).to receive(:associated_ids_for_checks).
       with([entity.id]).and_return(entity.id => [check.id])
@@ -230,7 +237,7 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
     expect(check_2).to receive(:end_scheduled_maintenance).with(sched_maint_2, an_instance_of(Time))
 
     expect(Flapjack::Data::Check).to receive(:find_by_ids!).
-      with([check.id, check_2.id]).and_return([check, check_2])
+      with(check.id, check_2.id).and_return([check, check_2])
 
     expect(Flapjack::Data::Entity).to receive(:associated_ids_for_checks).
       with([entity.id]).and_return(entity.id => [check.id, check_2.id])
@@ -242,7 +249,7 @@ describe 'Flapjack::Gateways::JSONAPI::EntityMethods', :sinatra => true, :logger
 
   it "creates a test notification event for all checks on an entity" do
     expect(Flapjack::Data::Check).to receive(:find_by_ids!).
-      with([check.id]).and_return([check])
+      with(check.id).and_return([check])
 
     expect(entity).to receive(:name).and_return('www.example.com')
     expect(check).to receive(:entity).and_return(entity)

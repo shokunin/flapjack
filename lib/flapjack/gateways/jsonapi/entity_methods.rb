@@ -30,7 +30,7 @@ module Flapjack
            data_ids = entities_data.reject {|c| c['id'].nil? }.
               map {|co| co['id'].to_s }
 
-            Flapjack::Data::Entity.send(:lock) do
+            Flapjack::Data::Entity.backend.lock(Flapjack::Data::Entity) do
 
               conflicted_ids = data_ids.select {|id|
                 Flapjack::Data::Entity.exists?(id)
@@ -73,7 +73,7 @@ module Flapjack
             end
 
             entities = if requested_entities
-              Flapjack::Data::Entity.find_by_ids!(requested_entities)
+              Flapjack::Data::Entity.find_by_ids!(*requested_entities)
             else
               Flapjack::Data::Entity.all
             end
@@ -95,7 +95,7 @@ module Flapjack
           end
 
           app.patch '/entities/:id' do
-            Flapjack::Data::Entity.find_by_ids!(params[:id].split(',')).each do |entity|
+            Flapjack::Data::Entity.find_by_ids!(*params[:id].split(',')).each do |entity|
               apply_json_patch('entities') do |op, property, linked, value|
                 case op
                 when 'replace'
@@ -121,7 +121,7 @@ module Flapjack
           end
 
           app.delete '/entities/:id' do
-            Flapjack::Data::Entity.find_by_ids!(params[:id].split(',')).map(&:destroy)
+            Flapjack::Data::Entity.find_by_ids!(*params[:id].split(',')).map(&:destroy)
 
             status 204
           end
